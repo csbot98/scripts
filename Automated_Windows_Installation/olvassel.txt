@@ -1,0 +1,42 @@
+::Magyar:: //futtában összedobott leírás
+Linuxos PXE-n belül Win PE környezetben a script segít az automatizált windows telepítésben.
+A scriptnek létezik egy egybegyúrt GUI-val rendelkező változata, ami az AnyBox-szal lett megkreálva, de külön-külön szét is van bontva GUI-tól mentesen.
+
+Ezen script/scriptek változata elsődelgesen Windows 10-re vannak kihegyezve, de könnyedén cserélhetőek a "wim"-ek alatta.
+
+0. GUI script ismertetés:
+Az alábbi infókat kéri be a script:
+-Home vagy Pro
+-Efi vagy Legacy
+-Full vagy tárhelyre bontott legyen a terület
+-Gépnév (alap esetben "DESKTOP")
+
+1. Szükséges fájlok
+-Wim:
+Értelemszerűen kellenek a Windows wim-ek. Ezek maguk a rendszerek. Ezeket könnyen le lehet generálni a friss .iso fájlokból
+
+dism /get-wiminfo /wimfile:"E:\sources\install.ESD" //Ezzel nézi meg az index-et (Path-re figyelni kell!!)
+dism /export-image /SourceImageFile:install.esd /SourceIndex:IndexNumber /DestinationImageFile:install.wim /Compress:max /CheckIntegrity (az indexnumbert át kell írni)
+
+-diskpart.txt
+A txt-ből kiolvassa a script, hogy miként legyen particionálva a terület.
+
+-Unattend.xml:
+Ebből olvassa ki a rendszer, hogy az OOBE-re vonatkozó válaszokat (username, password, stb.). Sőt itt lehetőség van rá, hogy futtassunk parancsokat is. Így itt megvan adva hogy a "choco"-t rakja fel.
+
+-SetupComplete.cmd
+Az első telepítés után van rá mód, hogy amíg Üdvözöl a rendszer, addig bizonyos programokat előre telepítsünk. Ami ebben a cmd fájlban benne van az le fog futni. Jelen esetben a "choco"-val telepítsünk alap programokat (firefox, vlc, skype stb.)
+
+1.1 További szükséges fájlok
+Hogy a GUI megfelelően fusson, kell hozzá az AnyBox script
+
+2.Alkalmazás
+Ha egy gyökérben van az 
+-AnyBox-master
+-images (wimek helye)
+-part-schemes (diskpart txt)
+-postinstall (setupc.cmd + unattend.xml)
++
+-Win_Tool.ps1
+
+Akkor hiba nélkül kell futnia.
