@@ -1,0 +1,10 @@
+Ebben a mappában kell lennie a wim-eknek. Persze ez is átírható, ez csak a default beállítás.
+
+Kell egy friss win.iso és abból kinyerni a wimet.
+
+dism /get-wiminfo /wimfile:"E:\sources\install.ESD" //Ezzel nézi meg az index-et (Path-re figyelni kell!!)
+dism /export-image /SourceImageFile:install.esd /SourceIndex:IndexNumber /DestinationImageFile:install.wim /Compress:max /CheckIntegrity (az indexnumbert át kell írni)
+--------
+cd E:
+dism /get-wiminfo /wimfile:"E:\sources\install.ESD"
+dism /export-image /E:\sources\:install.esd /SourceIndex:5 /DestinationImageFile:D:\xmls\install.wim /Compress:max /CheckIntegrity
