@@ -1,0 +1,3 @@
+Ebbe a mappába kell berakni az AnyBox-ot, innen hivatokozik jelen állás szerint a script.
+
+https://github.com/fresh2dev/AnyBox
