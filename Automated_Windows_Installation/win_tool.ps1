@@ -5,8 +5,8 @@ $efidrive = "W:"
 $legacydrive = "B:"
 $osdrive = "R:"
 $oslist = @(
-			( "Windows 10 Home", "boot.wim", "efi.wim", "home.wim" ),
-			( "Windows 10 Pro", "boot.wim", "efi.wim", "pro.wim" )
+			( "Windows 10 Home", "win10\boot.wim", "win10\efi.wim", "win10\home.wim" ),
+			( "Windows 10 Pro", "win10\boot.wim", "win10\efi.wim", "win10\pro.wim" )
 		)
 		
 [System.Collections.ArrayList]$ositem = @()
