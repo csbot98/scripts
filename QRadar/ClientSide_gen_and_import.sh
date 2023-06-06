@@ -244,20 +244,7 @@ KEYTOOL_ALIAS="syslog-tls"
 						echo "Success! Created $CLIENT_P12_FILE"
 						echo ""
 					fi
-					
-				# Törlés a history-ból
-				if [[ -n "$PKCS12_PASSWORD" ]]; then
-				#Eltávolítjuk az összes olyan sort a history-ból, amely tartalmazza a jelszót
-					history | grep "$PKCS12_PASSWORD" | cut -d" " -f2- | while read -r line; do
-						history -d "$line"
-					done
-
-				#Törlés a változóból
-					unset PKCS12_PASSWORD
-					echo "P12 Password has been deleted from history"
-					echo ""
-				fi
-			fi
+			#fi
 			
 			##Itt jön az a rész, hogy a cert base név és majd certet megkapó host neve ugyanaz és akkor simán átmásolja a fájlokat a script.
 			echo "Sending the files to the final place..."
@@ -371,8 +358,23 @@ KEYTOOL_ALIAS="syslog-tls"
 			# Remove the uncompressed directory
 			#rm -r "$COMPRESSED_DIR"
 			#echo "Uncompressed directory $COMPRESSED_DIR deleted."
-			
+		fi
 		done
+		
+		# Törlés a history-ból
+				if [[ -n "$PKCS12_PASSWORD" ]]; then
+				#Eltávolítjuk az összes olyan sort a history-ból, amely tartalmazza a jelszót
+					history | grep "$PKCS12_PASSWORD" | cut -d" " -f2- | while read -r line; do
+						history -d "$line"
+					done
+
+				#Törlés a változóból
+					unset PKCS12_PASSWORD
+					echo "P12 Password has been deleted from history"
+					echo ""
+				fi
+				
 		echo "It's all done!"
 		echo ""
+		
 	fi #ez a nagy egészet lezáró!
