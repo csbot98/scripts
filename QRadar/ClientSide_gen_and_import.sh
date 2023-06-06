@@ -4,11 +4,11 @@
 #-GenCSR: Generál egy előre megadott CNF fájl alapján egy privát kulcsot és hozzá egy CSR fájlt, amit aztán majd alá kell írni.
 #-Import: a már aláírt (visszakapott) cert(ek) alapján generál egy .pem, .p12, -DER.key fájlt, majd ha ugyanaz a cert base név és ami az etc/hosts-ban is megvan adva, a fájlok az "all_server.sh" scriptet használva, kiosztásra kerülnek.
 
-#FONTOS: minden fájlnak ('.crt', '.key, '_CA.key' és esetleg az intermediateCA ami szintén ".crt" csak külön mappában), ugyanaz kell legyen a nevük! ['teszt.crt', 'teszt.key, 'teszt_CA.key']
+#FONTOS: minden fájlnak ('.crt', '.key, '_CA.crt' és esetleg az intermediateCA ami szintén ".crt" csak külön mappában), ugyanaz kell legyen a nevük! ['teszt.crt', 'teszt.key, 'teszt_CA.crt']
 
 ########
 #Innen olvassa fel a certeket (signed xy.crt & CA.key & intermediateCA.crt).
-CA_KEY_DIR="$(pwd)/ca"
+CA_CERT_DIR="$(pwd)/ca"
 CERT_DIR="$(pwd)/cert"
 INTERMEDIATE_CA_DIR="$(pwd)/intermediateCA"
 ########
@@ -23,6 +23,9 @@ CNF_DIR="$(pwd)/cnf"
 #Ide kerül mentésre .csr és a private key.
 CSR_DIR="$(pwd)/csr"
 KEY_DIR="$(pwd)/key"
+
+#Ide kerülnek majd az elkészült fájlok backup gyanánt. Sima mappába és tömörített verzióban is.
+COMPRESSED_FINAL_DIR="$(pwd)/compressed_final"
 
 #Végén ebbe a mappába kerül majd az újonnan generált fájlok hada (.pem, .der, .p12).
 #QRADAR_DIR="/opt/qradar/conf/trusted_certificates/"
@@ -134,8 +137,8 @@ KEYTOOL_ALIAS="syslog-tls"
 		fi
 		
 		# Check if the directory exists
-		if [ ! -d "$CA_KEY_DIR" ]; then
-			echo "The specified certificate directory does not exist or is not a directory: $CA_KEY_DIR"
+		if [ ! -d "$CA_CERT_DIR" ]; then
+			echo "The specified certificate directory does not exist or is not a directory: $CA_CERT_DIR"
 			echo ""
 			exit 1
 		fi
@@ -153,8 +156,21 @@ KEYTOOL_ALIAS="syslog-tls"
 			echo ""
 		fi
 		
+		# Check if the directory exists
+		if [ ! -d "$COMPRESSED_FINAL_DIR" ]; then
+			echo "Warning!: The specified certificate directory does not exist or is not a directory: $COMPRESSED_FINAL_DIR"
+			mkdir "$COMPRESSED_FINAL_DIR"
+			echo "Success!: The ${COMPRESSED_FINAL_DIR} directory has been created!"
+			echo ""
+		fi
+		
 		for CLIENT_CERT_FILE in "$CERT_DIR"/*.crt; do
 			if [ -f "$CLIENT_CERT_FILE" ]; then
+				
+				echo ""
+				echo "###New Round###"
+				echo ""
+				
 				CLIENT_CERT_BASE=$(basename "$CLIENT_CERT_FILE" .crt)
 				echo "A cert base fájl neve: $CLIENT_CERT_BASE"
 				
@@ -179,10 +195,10 @@ KEYTOOL_ALIAS="syslog-tls"
 				fi
 				
 				# Read the rootCA file name from the certificate directory
-				#ROOT_CA_FILE="$CA_KEY_DIR/${CLIENT_CERT_BASE}_CA.key"		//ha más lenne a root ca neve
-				ROOT_CA_FILE="$CA_KEY_DIR/ca.key"
+				#ROOT_CA_FILE="$CA_CERT_DIR/${CLIENT_CERT_BASE}_CA.crt"		//ha más lenne a root ca neve
+				ROOT_CA_FILE="$CA_CERT_DIR/ca.crt"
 				if [ ! -f "$ROOT_CA_FILE" ]; then
-					echo "No rootCA.key file found in the specified certificate directory: $CA_KEY_DIR"
+					echo "No rootCA.key file found in the specified certificate directory: $CA_CERT_DIR"
 					echo ""
 					exit 1
 				else
@@ -240,8 +256,6 @@ KEYTOOL_ALIAS="syslog-tls"
 					unset PKCS12_PASSWORD
 					echo "P12 Password has been deleted from history"
 					echo ""
-					echo "###New Round###"
-					echo ""
 				fi
 			fi
 			
@@ -291,41 +305,74 @@ KEYTOOL_ALIAS="syslog-tls"
 			#Endgame
 			#Deleting files from current dir
 			echo ""
-			echo "Deleting files from the current directory..."
-			
-			# DELETE $CLIENT_P12_FILE
+			echo "Compressing files in the current directory..."
+
+			# Create a directory for the compressed files
+			COMPRESSED_DIR="${COMPRESSED_FINAL_DIR}/${CLIENT_CERT_BASE}"
+			mkdir "$COMPRESSED_DIR"
+
+			# Move $CLIENT_P12_FILE to the compressed directory
 			if [ -f "$CLIENT_P12_FILE" ]; then
-				rm "$CLIENT_P12_FILE"
-				echo "$CLIENT_P12_FILE P12 file was successfully deleted."
+				mv "$CLIENT_P12_FILE" "$COMPRESSED_DIR/"
+				if [ $? -eq 0 ]; then
+					echo "$CLIENT_P12_FILE successfully moved to $COMPRESSED_DIR."
+				else
+					echo "Failed to Move $CLIENT_P12_FILE to $COMPRESSED_DIR."
+				fi
 			else
 				echo "$CLIENT_P12_FILE cannot be found.."
 			fi
 
-			# DELETE $CLIENT_CERT_PEM
+			# Move $CLIENT_CERT_PEM to the compressed directory
 			if [ -f "$CLIENT_CERT_PEM" ]; then
-				rm "$CLIENT_CERT_PEM"
-				echo "$CLIENT_CERT_PEM PEM file was successfully deleted."
+				mv "$CLIENT_CERT_PEM" "$COMPRESSED_DIR/"
+				if [ $? -eq 0 ]; then
+					echo "$CLIENT_CERT_PEM successfully moved to $COMPRESSED_DIR."
+				else
+					echo "Failed to Move $CLIENT_CERT_PEM to $COMPRESSED_DIR."
+				fi
 			else
 				echo "$CLIENT_CERT_PEM cannot be found.."
 			fi
 
-			# DELETE $CLIENT_KEY_DER
+			# Move $CLIENT_KEY_DER to the compressed directory
 			if [ -f "$CLIENT_KEY_DER" ]; then
-				rm "$CLIENT_KEY_DER"
-				echo "$CLIENT_KEY_DER DER key file was successfully deleted."
+				mv "$CLIENT_KEY_DER" "$COMPRESSED_DIR/"
+				if [ $? -eq 0 ]; then
+					echo "$CLIENT_KEY_DER successfully moved to $COMPRESSED_DIR."
+				else
+					echo "Failed to Move $CLIENT_KEY_DER to $COMPRESSED_DIR."
+				fi
 			else
 				echo "$CLIENT_KEY_DER cannot be found.."
 			fi
-			
-			# DELETE $CLIENT_CSR_FILE
+
+			# Move $CLIENT_CSR_FILE to the compressed directory
 			CLIENT_CSR_FILE="${CLIENT_CERT_BASE}.csr"
 			if [ -f "$CSR_DIR/${CLIENT_CSR_FILE}" ]; then
-				rm "$CSR_DIR/${CLIENT_CSR_FILE}"
-				echo "$CSR_DIR/${CLIENT_CSR_FILE} CSR file was successfully deleted."
+				mv "$CSR_DIR/${CLIENT_CSR_FILE}" "$COMPRESSED_DIR/"
+				if [ $? -eq 0 ]; then
+					echo "$CSR_DIR/${CLIENT_CSR_FILE} successfully moved to $COMPRESSED_DIR."
+				else
+					echo "Failed to Move $CSR_DIR/${CLIENT_CSR_FILE} to $COMPRESSED_DIR."
+				fi
 			else
 				echo "$CSR_DIR/${CLIENT_CSR_FILE} cannot be found.."
 			fi
+
+			# Compress the directory
+			tar -czvf "$COMPRESSED_DIR.tar.gz" "$COMPRESSED_DIR"
+			if [ $? -eq 0 ]; then
+				echo "$COMPRESSED_DIR successfully compressed."
+			else
+				echo "Failed to compress $COMPRESSED_DIR."
+			fi
+
+			# Remove the uncompressed directory
+			#rm -r "$COMPRESSED_DIR"
+			#echo "Uncompressed directory $COMPRESSED_DIR deleted."
 			
 		done
 		echo "It's all done!"
+		echo ""
 	fi #ez a nagy egészet lezáró!
