@@ -1,14 +1,12 @@
 #!/bin/bash
 
-##0619-en ezt buheráltam, nagyjából kész! A teszt maradt hátra a DLC, de előbb a .177-en
-
 #Tutorial:
-#-Install: az EasyRSA-t lehet ezzel feltelepíteni.
-#-GenCNF: CNF fájl generál
+#-Install: az EasyRSA-t lehet ezzel feltelepíteni (CA-nak).
+#-GenCNF: CNF fájl generál (elsődlegesen a DLC-nek lett szánva)
 #-GenCSR: Generál egy előre megadott CNF fájl alapján egy privát kulcsot és hozzá egy CSR fájlt, amit aztán majd alá kell írni.
 #-GenCert: Generál EasyRSA-val egy aláírt kliens certet.
 #-Import: a már aláírt (visszakapott) cert(ek) alapján generál egy .pem, .p12, -DER.key fájlt, majd ha ugyanaz a cert base név és ami az etc/hosts-ban is megvan adva, a fájlok az "all_server.sh" scriptet használva, kiosztásra kerülnek.
-#-DLCImport: 
+#-DLCImport: A keytoolba beimportálja a root ca certeket + ha generáltunk egy CSR-t és azt aláíratjuk a CA szerverrel és azt "visszaadjuk", akkor .p12 fájlt generál.
 
 #FONTOS: minden fájlnak ('.crt', '.key, '_CA.crt' és esetleg az intermediateCA ami szintén ".crt" csak külön mappában), ugyanaz kell legyen a nevük! ['teszt.crt', 'teszt.key, 'teszt_CA.crt']
 
@@ -17,6 +15,7 @@
 CA_CERT_DIR="$(pwd)/ca"
 CERT_DIR="$(pwd)/cert"
 INTERMEDIATE_CA_DIR="$(pwd)/intermediateCA"
+ANCHORS="/etc/pki/ca-trust/source/anchors"
 ########
 
 OPENSSL_CMD="/usr/bin/openssl"
@@ -25,17 +24,22 @@ ALL_SERVER_CMD="/opt/qradar/support/all_servers.sh"
 IP_ADDRESS=$(hostname -I | awk '{print $1}')
 FQDN=$(hostname -f)
 
+#Keytool loc.	#ha esetleg nem találná a sima "keytool" parancsot.
+results=$(find / -name "jre" 2>/dev/null)
+KEYTOOL_CMD=$results/bin/keytool
+
+
 #EasyRSA install mappa
 EASYRSA_INSTALL_DIR="$(pwd)/EasyRSA"
 EASYRSA_DIR="$EASYRSA_INSTALL_DIR/EasyRSA-3.0.8"
 
 #########
-																		#########CNF#########
+###############CNF#########
 #Ha nincs CNF fájl, az alábbi adatokat megadva létre lehet hozni. 
 COMMON_NAME="10.35.116.177"
 ORG_NAME="T-Teszt"
 ORG_UNIT="T-TesztU"
-##################
+###########################
 #########
 
 #Ezt leginkább a ca jelszó tárolása miatt használom.
@@ -52,9 +56,8 @@ KEY_DIR="$(pwd)/key"
 COMPRESSED_FINAL_DIR="$(pwd)/compressed_final"
 
 #Végén ebbe a mappába kerül majd az újonnan generált fájlok hada (.pem, .der, .p12).
-#QRADAR_DIR="/opt/qradar/conf/trusted_certificates/"
-#QRADAR_DIR="/tmp/kliens/tteszt/0504/final"
-QRADAR_DIR="/tmp/teszt"
+QRADAR_DIR="/opt/qradar/conf/trusted_certificates/"
+#QRADAR_DIR="/tmp/teszt"
 
 #Keytool
 DEST_KEY_DIR="/opt/qradar/conf"
@@ -65,15 +68,13 @@ KEYTOOL_ALIAS="syslog-tls"
 	#Keystore
 KEYSTORE_ROOT_ALIAS_NAME="client_root_ca"
 KEYSTORE_INT_ALIAS_NAME="client_int_ca"
-KEYSTORE_NAME="clientca"
+KEYSTORE_NAME="clientca"	#ezt kell átírni, ha másik trust store fájl akarunk. A default trust store neve: cacerts
 	#Client_CA
-CLIENT_ROOT_CA="${CERT_DIR}/${FQDN}.crt"
-CLIENT_INT_CA="${INTERMEDIATE_CA_DIR}/${FQDN}-int.crt"
+CLIENT_ROOT_CA="${CA_CERT_DIR}/ca.crt"
+CLIENT_INT_CA="${INTERMEDIATE_CA_DIR}/$root_int_ca.crt"
 	#CNF_for_DLC (mostly)
 CNF_FILE="${CNF_DIR}/${FQDN}.cnf"
 	#Convert
-# CLIENT_CERT_DER="${CERT_DIR}/${FQDN}.der" 				#ez lehet akár .crt is ? átdolgozni		||	ezt elvileg törölni is lehet, átdolgoztam
-# CLIENT_CERT_CRT="${CERT_DIR}/tesztder.der"
 CLIENT_CERT_CRT="${CERT_DIR}/${FQDN}.crt"
 CLIENT_CERT_PEM="${CERT_DIR}/${FQDN}.pem" 
 INT_CA_PEM_FILE="${INTERMEDIATE_CA_DIR}/${FQDN}-int.pem"
@@ -81,8 +82,8 @@ INT_CA_CRT_FILE="${INTERMEDIATE_CA_DIR}/${FQDN}-int.crt"
 	#Final file
 KEY_FILE="${KEY_DIR}/${FQDN}.key"
 DLC_P12_FILE="${CERT_DIR}/${FQDN}.p12"
-# KEY_STORES="/opt/qradar/conf/key_stores"
-KEY_STORES="$(pwd)/teszt"
+KEY_STORES="/opt/qradar/conf/key_stores"
+# KEY_STORES="$(pwd)/teszt"
 ##############
 
 	if [[ $# -eq 0 ]]; then
@@ -658,8 +659,9 @@ subjectAltName = \$ENV::SAN" > "${CNF_FILE}"
 	elif [ "$1" = "-DLCImport" ]; then
 		echo "####################"
 		echo "DLCImport mode selected"
-		echo "Note: If CNF file is necessary and it is missing: -GenCNF"
-		echo "Note: If CSR and Private key are missing: -GenCSR"
+		# echo "Note: If CNF file is necessary and it is missing: -GenCNF"
+		# echo "Note: If CSR and Private key are missing: -GenCSR"
+		echo "Note: Required root cert files: CA.crt + root_int_CA.crt"
 		echo ""
 		
 		# Check if the directory exists
@@ -668,27 +670,85 @@ subjectAltName = \$ENV::SAN" > "${CNF_FILE}"
 			echo ""
 		fi
 		
+		# Check if the directory exists
+		if [ ! -d "$CA_CERT_DIR" ]; then
+			echo "Warning!: The specified certificate directory does not exist or is not a directory: $CA_CERT_DIR"
+			echo ""
+		fi
+		
+		# Check if Client ROOT CA cert exists and copy to the anchors dir.
+		if [ ! -f "$CLIENT_ROOT_CA" ]; then
+			echo "Error!: Client root cert is missing!"
+			exit 1
+		else
+			cp "${CLIENT_ROOT_CA}" "${ANCHORS}"
+			echo "The ${CLIENT_ROOT_CA} file copied to ${ANCHORS}"
+			echo ""
+		fi
+		
+		# Check if the directory exists
+		if [ ! -d "$KEY_STORES" ]; then
+			echo "Warning! The specified certificate directory does not exist or is not a directory: $KEY_STORES"
+			mkdir "$KEY_STORES"
+			echo "Success!: The ${KEY_STORES} directory has been created!"
+			echo ""
+		fi
+		
+		#PKCS12 Password
 		read -sp "Enter password for pkcs12 file: " PKCS12_PASSWORD
 		echo ""
 		
-		#Import keystore
-		if [ -f "$CLIENT_INT_CA" ] && [ -f "$CLIENT_ROOT_CA" ]; then
-			echo "A kliens ICA neve: $CLIENT_INT_CA"
-			echo "A kliens root CA neve: $CLIENT_ROOT_CA"
-			keytool -import -alias "${KEYSTORE_ROOT_ALIAS_NAME}" -file "${CLIENT_ROOT_CA}" -keystore "${KEYSTORE_NAME}"
-			keytool -import -alias "${KEYSTORE_INT_ALIAS_NAME}" -file "${CLIENT_INT_CA}" -keystore "${KEYSTORE_NAME}"
+		#If you're using your own truststore... #Import keystore 
+		if [ -f "$CLIENT_ROOT_CA" ]; then
+			echo "Client root CA: $CLIENT_ROOT_CA"
+			$KEYTOOL_CMD -import -alias "${KEYSTORE_ROOT_ALIAS_NAME}" -file "${CLIENT_ROOT_CA}" -keystore "${KEYSTORE_NAME}"
+			if [ $? -eq 0 ]; then
+				echo "Success! Root CA has been imported!"
+			else
+				echo "Error! Failed to import root CA cert to keystore."
+				exit 1
+			fi
+		else
+			echo "Warning! No client rootCA.crt file found in the specified certificate directory: $CA_CERT_DIR"
+			echo ""
+			
+		fi
+		
+		#If you're using your own truststore... #Import keystore 
+		if [ -f "$CLIENT_INT_CA" ]; then
+			echo "Client intermediateCA: $CLIENT_INT_CA"
+			$KEYTOOL_CMD -import -alias "${KEYSTORE_INT_ALIAS_NAME}" -file "${CLIENT_INT_CA}" -keystore "${KEYSTORE_NAME}"
+			if [ $? -eq 0 ]; then
+				echo "Success! Root intermediateCA has been imported!"
+			else
+				echo "Error! Failed to import root intermediateCA cert to keystore."
+				exit 1
+			fi
 		else
 			echo "Warning! No client intermediateCA .crt file found in the specified certificate directory: $INTERMEDIATE_CA_DIR"
 			echo ""
-			update-ca-trust
 		fi
+		
+		#Copy trust store file to /opt/qradar/conf/key_stores dir
+		mv "${KEYSTORE_NAME}" "${KEY_STORES}"
+		if [ $? -eq 0 ]; then
+			echo "${KEYSTORE_NAME} trust store file successfully moved to $KEY_STORES."
+			echo ""
+		else
+			echo "Failed copy ${KEYSTORE_NAME} trust store file to ${KEY_STORES}."
+			exit 1
+		fi
+		
+		#If you're using the default truststore...
+		update-ca-trust
 		
 		#If the CLIENT certificate is in DER (binary) format, convert it to PEM format	|| Ha a .crt der formátumu akkor átkonvertálja pem-mé és akkor már a client pemmel dolgozik később. Ha viszont a .crt alapból PEM formátumu, nem konvertál és később alapból a crtvel dolgozik.
 		if [ -f "${CLIENT_CERT_CRT}" ]; then 
-			$OPENSSL_CMD x509 -inform der -in "${CLIENT_CERT_CRT}" >/dev/null 2>&1
+			#$OPENSSL_CMD x509 -inform der -in "${CLIENT_CERT_CRT}" >/dev/null 2>&1			#az " -inform der " eredetileg szerepelne a parancsban, de hibát dob ki a konvertálásnál
+			$OPENSSL_CMD x509 -in "${CLIENT_CERT_CRT}" >/dev/null 2>&1
 			echo "The ${CLIENT_CERT_CRT} is in DER format."
 			echo "Converting cert file to PEM format."
-			$OPENSSL_CMD x509 -inform der -in "${CLIENT_CERT_CRT}" -out "${CLIENT_CERT_PEM}"
+			$OPENSSL_CMD x509 -in "${CLIENT_CERT_CRT}" -out "${CLIENT_CERT_PEM}"
 			echo "${CLIENT_CERT_PEM} is ready!"
 			echo ""
 		else
@@ -698,16 +758,14 @@ subjectAltName = \$ENV::SAN" > "${CNF_FILE}"
 		
 		#If the CLIENT intermediateCA certificate is in DER (binary) format, convert it to PEM format	|| Ha a .crt der formátumu akkor átkonvertálja pem-mé és akkor már a client pemmel dolgozik később. Ha viszont a .crt alapból PEM formátumu, nem konvertál és később alapból a crtvel dolgozik.
 		if [ -f "${INT_CA_CRT_FILE}" ]; then 
-			$OPENSSL_CMD x509 -inform der -in "${INT_CA_CRT_FILE}" >/dev/null 2>&1
+			$OPENSSL_CMD x509 -in "${INT_CA_CRT_FILE}" >/dev/null 2>&1
 			echo "The ${INT_CA_CRT_FILE} is in DER format."
 			echo "Converting cert file to PEM format."
-			$OPENSSL_CMD x509 -inform der -in "${INT_CA_CRT_FILE}" -out "${INT_CA_PEM_FILE}"
+			$OPENSSL_CMD x509 -in "${INT_CA_CRT_FILE}" -out "${INT_CA_PEM_FILE}"
 			echo "${INT_CA_PEM_FILE} is ready!"
 		else
 			echo "The ${INT_CA_CRT_FILE} is in PEM format."
 		fi
-		
-		#talán a int pemet is érdemes megvizsgálni
 		
 		#Append the intermediate CA certificate to the signed server certificate
 		if [ -f "${INT_CA_PEM_FILE}" ] && [ -f "${CLIENT_CERT_PEM}" ]; then 
@@ -740,15 +798,10 @@ subjectAltName = \$ENV::SAN" > "${CNF_FILE}"
 			exit 1
 		fi
 			
-		#Copy the dlc-server.pfx file to the /opt/qradar/conf/key_stores directory. If the /key_stores folder doesn't exist, create it.
-		# Check if the directory exists
-		if [ ! -d "$KEY_STORES" ]; then
-			echo "Warning! The specified certificate directory does not exist or is not a directory: $KEY_STORES"
-			mkdir "$KEY_STORES"
-			echo "Success!: The ${KEY_STORES} directory has been created!"
-			echo ""
-			cp "${DLC_P12_FILE}" "${KEY_STORES}"
-			echo "${DLC_P12_FILE} is copied to ${KEY_STORES}."
+		#Copy the dlc-server.pfx file to the /opt/qradar/conf/key_stores directory.
+		if [ ! -f "$DLC_P12_FILE" ]; then
+			echo "Warning! ${DLC_P12_FILE} is cannot be found!"
+			exit 1
 		else
 			cp "${DLC_P12_FILE}" "${KEY_STORES}"
 			echo "${DLC_P12_FILE} is copied to ${KEY_STORES}."
